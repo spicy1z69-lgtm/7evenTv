@@ -1,6 +1,5 @@
 
 import { useState, useEffect, useRef } from "react";
-import { io } from "socket.io-client";
 import "./App.css";
 
 const ROOM_ID = "7even-room";
@@ -14,7 +13,7 @@ const movies = [
     description: "فيديو تجريبي للتأكد من تشغيل مشغل 7evenTv.",
     poster:
       "https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?w=600",
-    video: "/demo.mp4",
+    video: "https://pub-f3a0369a2b1741a6a4d1fc75d154d0f7.r2.dev/test.mp4",
   },
   {
     id: 2,
