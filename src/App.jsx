@@ -103,94 +103,57 @@ export default function App() {
   }
 
   useEffect(() => {
-    const socket = io(window.location.origin, {
-      path: "/sync/socket.io/",
-      transports: ["polling", "websocket"],
-      reconnection: true,
-      timeout: 20000,
-    });
+    const wsUrl = "wss://7eventv-sync.jg7v76cvy4.workers.dev/room/" +
+      encodeURIComponent(ROOM_ID) + "/ws";
+    let reconnectTimer;
+    let reconnectDelay = 1000;
+    let disposed = false;
+    let socket;
 
-    socketRef.current = socket;
+    const connect = () => {
+      if (disposed) return;
+      setConnection("جاري الاتصال...");
+      socket = new WebSocket(wsUrl);
+      socketRef.current = socket;
 
-    const handleConnect = () => {
-      console.info("Socket.IO connected; joining sync room:", socket.id);
-      setConnection("متصل");
+      socket.addEventListener("open", () => {
+        reconnectDelay = 1000;
+        setConnection("متصل");
+        socket.send(JSON.stringify({ type: "sync-request" }));
+      });
 
-      socket.emit("join-room", {
-        roomId: ROOM_ID,
-        userName: "مشاهد",
+      socket.addEventListener("message", (event) => {
+        try {
+          const message = JSON.parse(event.data);
+          const state = message.state ?? message;
+          if (
+            ["state", "room-state"].includes(message.type) &&
+            typeof state.playing === "boolean" &&
+            Number.isFinite(state.currentTime) &&
+            state.currentTime >= 0
+          ) applyRoomState(state);
+        } catch (error) {
+          console.warn("Ignored invalid sync message:", error);
+        }
+      });
+
+      socket.addEventListener("error", () => setConnection("مشكلة في اتصال المزامنة"));
+
+      socket.addEventListener("close", () => {
+        if (disposed) return;
+        setConnection("انقطع الاتصال، جارٍ إعادة المحاولة...");
+        reconnectTimer = window.setTimeout(connect, reconnectDelay);
+        reconnectDelay = Math.min(reconnectDelay * 2, 15000);
       });
     };
 
-    const handleConnectError = (error) => {
-      console.error("Socket.IO connection attempt failed:", {
-        message: error.message,
-        type: error.type,
-        description: error.description,
-        context: error.context,
-      });
-      setConnection(
-        socket.active ? "جاري إعادة الاتصال..." : "تعذر الاتصال بسيرفر المزامنة",
-      );
-    };
-
-    const handleDisconnect = (reason) => {
-      console.warn("Socket.IO disconnected:", {
-        reason,
-        transport: socket.io.engine?.transport?.name ?? "unavailable",
-      });
-      setConnection("انقطع الاتصال، جارٍ إعادة المحاولة...");
-
-      // Socket.IO does not automatically reconnect after a server namespace disconnect.
-      if (reason === "io server disconnect") socket.connect();
-    };
-
-    const handleRoomState = (state) => {
-      if (
-        !state ||
-        typeof state.playing !== "boolean" ||
-        !Number.isFinite(state.currentTime) ||
-        state.currentTime < 0
-      ) {
-        console.warn("Ignored invalid room-state payload:", state);
-        return;
-      }
-
-      applyRoomState(state);
-    };
-
-    const handleReconnectAttempt = (attempt) => {
-      console.info("Socket.IO reconnect attempt:", attempt);
-      setConnection("جاري إعادة الاتصال...");
-    };
-
-    const handleReconnectError = (error) => {
-      console.warn("Socket.IO reconnection attempt failed:", error.message);
-    };
-
-    const handleReconnectFailed = () => {
-      console.error("Socket.IO exhausted its automatic reconnection attempts.");
-      setConnection("تعذر الاتصال بسيرفر المزامنة");
-    };
-
-    socket.on("connect", handleConnect);
-    socket.on("connect_error", handleConnectError);
-    socket.on("disconnect", handleDisconnect);
-    socket.on("room-state", handleRoomState);
-    socket.io.on("reconnect_attempt", handleReconnectAttempt);
-    socket.io.on("reconnect_error", handleReconnectError);
-    socket.io.on("reconnect_failed", handleReconnectFailed);
+    connect();
 
     return () => {
+      disposed = true;
+      window.clearTimeout(reconnectTimer);
       window.clearTimeout(remoteApplyTimerRef.current);
-      socket.off("connect", handleConnect);
-      socket.off("connect_error", handleConnectError);
-      socket.off("disconnect", handleDisconnect);
-      socket.off("room-state", handleRoomState);
-      socket.io.off("reconnect_attempt", handleReconnectAttempt);
-      socket.io.off("reconnect_error", handleReconnectError);
-      socket.io.off("reconnect_failed", handleReconnectFailed);
-      socket.disconnect();
+      if (socket && socket.readyState < WebSocket.CLOSING) socket.close();
       if (socketRef.current === socket) socketRef.current = null;
     };
   }, []);
@@ -208,13 +171,14 @@ export default function App() {
     const socket = socketRef.current;
     const video = videoRef.current;
 
-    if (!socket?.connected || !video || applyingRemoteRef.current) return;
+    if (!socket || socket.readyState !== WebSocket.OPEN || !video || applyingRemoteRef.current) return;
 
-    socket.emit("playback-update", {
+    socket.send(JSON.stringify({
+      type: "playback-update",
       roomId: ROOM_ID,
       playing,
       currentTime: video.currentTime,
-    });
+    }));
   }
 
   function handlePlay() {
