@@ -16,6 +16,16 @@ const movies = [
     video: "https://pub-f3a0369a2b1741a6a4d1fc75d154d0f7.r2.dev/test.mp4",
   },
   {
+    id: 5,
+    title: "Test Video",
+    year: 2026,
+    category: "تجربة",
+    description: "فيديو تجريبي مرفوع على Cloudflare R2.",
+    poster:
+      "https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?w=600",
+    video: "https://pub-f3a0369a2b1741a6a4d1fc75d154d0f7.r2.dev/test.mp4",
+  },
+  {
     id: 2,
     title: "The Dark Knight",
     year: 2008,
